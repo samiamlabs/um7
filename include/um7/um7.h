@@ -66,11 +66,19 @@ class Driver : public rclcpp::Node
 public:
   Driver(const rclcpp::NodeOptions & options);
 
-  void configure_sensor(um7::Comms* sensor);
-
 private:
   void publish(um7::Registers& r);
+
   void update_loop(void);
+
+  void configure_sensor(std::shared_ptr<um7::Comms> sensor);
+
+  template<typename RegT>
+  void send_command(const um7::Accessor<RegT>& reg, std::string human_name);
+
+  void handle_reset_service(
+    const std::shared_ptr<um7::srv::Reset::Request> req,
+    std::shared_ptr<um7::srv::Reset::Response> resp);
 
   // ROS2 Interfaces
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -81,6 +89,7 @@ private:
   OutputAxisOption axes_;
   std::string port_;
   serial::Serial serial_;
+  std::shared_ptr<um7::Comms> sensor_;
   sensor_msgs::msg::Imu imu_msg_;
 
   std::thread update_thread_;

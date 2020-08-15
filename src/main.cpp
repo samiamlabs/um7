@@ -42,71 +42,40 @@ const char VERSION[10] = "0.0.2";   // um7_driver version
 // us to publish everything we have.
 const uint8_t TRIGGER_PACKET = DREG_EULER_PHI_THETA;
 
-/**
- * Function generalizes the process of writing an XYZ vector into consecutive
- * fields in UM7 registers.
-
-template<typename RegT>
-void configureVector3(um7::Comms* sensor, const um7::Accessor<RegT>& reg,
-                      std::string param, std::string human_name)
+namespace um7
 {
-  if (reg.length != 3)
-  {
-    throw std::logic_error("configureVector3 may only be used with 3-field registers!");
-  }
-
-  if (ros::param::has(param))
-  {
-    double x, y, z;
-    //ros::param::get(param + "/x", x);
-    //ros::param::get(param + "/y", y);
-    //ros::param::get(param + "/z", z);
-    //ROS_INFO_STREAM("Configuring " << human_name << " to ("
-    //                << x << ", " << y << ", " << z << ")");
-    reg.set_scaled(0, x);
-    reg.set_scaled(1, y);
-    reg.set_scaled(2, z);
-    if (sensor->sendWaitAck(reg))
-    {
-      throw std::runtime_error("Unable to configure vector.");
-    }
-  }
-}
-*/
 
 /**
  * Function generalizes the process of commanding the UM7 via one of its command
  * registers.
  */
 template<typename RegT>
-void sendCommand(um7::Comms* sensor, const um7::Accessor<RegT>& reg, std::string human_name)
+void Driver::send_command(
+  const um7::Accessor<RegT>& reg,
+  std::string human_name)
 {
-  //ROS_INFO_STREAM("Sending command: " << human_name);
-  if (!sensor->sendWaitAck(reg))
+  RCLCPP_INFO_STREAM(this->get_logger(), "Sending command: " << human_name);
+  if (!sensor_->sendWaitAck(reg))
   {
     throw std::runtime_error("Command to device failed.");
   }
 }
 
-void handleResetService(
-  um7::Comms* sensor,
-  const um7::srv::Reset::Request::SharedPtr req,
-  um7::srv::Reset::Response::SharedPtr resp)
+void Driver::handle_reset_service(
+  const std::shared_ptr<um7::srv::Reset::Request> req,
+  std::shared_ptr<um7::srv::Reset::Response> resp)
 {
   um7::Registers r;
-  if (req->zero_gyros) sendCommand(sensor, r.cmd_zero_gyros, "zero gyroscopes");
-  if (req->reset_ekf) sendCommand(sensor, r.cmd_reset_ekf, "reset EKF");
-  if (req->set_mag_ref) sendCommand(sensor, r.cmd_set_mag_ref, "set magnetometer reference");
+  if (req->zero_gyros) send_command(r.cmd_zero_gyros, "zero gyroscopes");
+  if (req->reset_ekf) send_command(r.cmd_reset_ekf, "reset EKF");
+  if (req->set_mag_ref) send_command(r.cmd_set_mag_ref, "set magnetometer reference");
 }
-
-namespace um7
-{
 
 /**
  * Send configuration messages to the UM7, critically, to turn on the value outputs
  * which we require, and inject necessary configuration parameters.
  */
-void Driver::configure_sensor(um7::Comms* sensor)
+void Driver::configure_sensor(std::shared_ptr<um7::Comms> sensor)
 {
   um7::Registers r;
 
@@ -180,14 +149,17 @@ void Driver::configure_sensor(um7::Comms* sensor)
   }
 
   r.misc_config.set(0, misc_config_reg);
-  if (!sensor->sendWaitAck(r.misc_config))
+  if (!sensor_->sendWaitAck(r.misc_config))
   {
     throw std::runtime_error("Unable to set CREG_MISC_SETTINGS.");
   }
 
   // Optionally disable performing a zero gyros command on driver startup.
   bool zero_gyros = this->declare_parameter<bool>("zero_gyros", true);
-  if (zero_gyros) sendCommand(sensor, r.cmd_zero_gyros, "zero gyroscopes");
+  if (zero_gyros)
+  {
+    send_command(r.cmd_zero_gyros, "zero gyroscopes");
+  }
 }
 
 /**
@@ -435,15 +407,16 @@ void Driver::update_loop(void)
       first_failure = true;
       try
       {
-        um7::Comms sensor(&serial_);
-        configure_sensor(&sensor);
+        sensor_.reset(new um7::Comms(&serial_));
+        configure_sensor(sensor_);
         um7::Registers registers;
-        //auto srv = this->create_service<um7::srv::Reset>("reset", std::bind(handleResetService, &sensor, std::placeholders::_1, std::placeholders::_2));
+        auto service = this->create_service<um7::srv::Reset>("imu/reset",
+          std::bind(&Driver::handle_reset_service, this, std::placeholders::_1, std::placeholders::_2));
 
         while (rclcpp::ok())
         {
           // triggered by arrival of last message packet
-          if (sensor.receive(&registers) == TRIGGER_PACKET)
+          if (sensor_->receive(&registers) == TRIGGER_PACKET)
           {
             // Triggered by arrival of final message in group.
             imu_msg_.header.stamp = this->now();
