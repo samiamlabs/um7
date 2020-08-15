@@ -87,7 +87,8 @@ void Driver::configure_sensor(std::shared_ptr<um7::Comms> sensor)
   }
 
   // set the broadcast rate of the device
-  int rate = this->declare_parameter<int>("update_rate", 20);
+  int rate;
+  this->get_parameter("update_rate", rate);
   if (rate < 20 || rate > 255)
   {
     RCLCPP_WARN(this->get_logger(), "Potentially unsupported update rate of %d", rate);
@@ -127,7 +128,8 @@ void Driver::configure_sensor(std::shared_ptr<um7::Comms> sensor)
   uint32_t misc_config_reg = 0;  // initialize all options off
 
   // Optionally disable mag updates in the sensor's EKF.
-  bool mag_updates = this->declare_parameter<bool>("mag_updates", true);
+  bool mag_updates;
+  this->get_parameter("mag_updates", mag_updates);
   if (mag_updates)
   {
     misc_config_reg |= MAG_UPDATES_ENABLED;
@@ -138,7 +140,8 @@ void Driver::configure_sensor(std::shared_ptr<um7::Comms> sensor)
   }
 
   // Optionally enable quaternion mode .
-  bool quat_mode = this->declare_parameter("quat_mode", true);
+  bool quat_mode;
+  this->get_parameter("quat_mode", quat_mode);
   if (quat_mode)
   {
     misc_config_reg |= QUATERNION_MODE_ENABLED;
@@ -155,7 +158,8 @@ void Driver::configure_sensor(std::shared_ptr<um7::Comms> sensor)
   }
 
   // Optionally disable performing a zero gyros command on driver startup.
-  bool zero_gyros = this->declare_parameter<bool>("zero_gyros", true);
+  bool zero_gyros;
+  this->get_parameter("zero_gyros", zero_gyros);
   if (zero_gyros)
   {
     send_command(r.cmd_zero_gyros, "zero gyroscopes");
@@ -363,6 +367,12 @@ Driver::Driver(const rclcpp::NodeOptions & options) :
   {
     axes_ = OutputAxisOptions::ROBOT_FRAME;
   }
+
+  // Parameters for configure_sensor
+  this->declare_parameter<int>("update_rate", 20);
+  this->declare_parameter<bool>("mag_updates", true);
+  this->declare_parameter<bool>("quat_mode", true);
+  this->declare_parameter<bool>("zero_gyros", true);
 
   // These values do not need to be converted
   imu_msg_.linear_acceleration_covariance[0] = linear_acceleration_cov;
