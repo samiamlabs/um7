@@ -34,7 +34,10 @@ ament_target_dependencies(um7_driver
   serial
   sensor_msgs
 )
-rosidl_target_interfaces(um7_driver ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(um7_driver "${cpp_typesupport_target}")
+
 rclcpp_components_register_node(um7_driver
   PLUGIN "um7::Driver"
   EXECUTABLE um7_node
